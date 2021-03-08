@@ -11,7 +11,7 @@ A common usage for this tool is to work with mailing lists. Suppose that we have
 
 ```
 # student_list.csv
-StudentId,E-mail,FirstName
+id,E-mail,FirstName
 00000123,alice@school.edu,Alice
 00000456,bob@school.edu,Robert
 00010789,cailin@school.edu,Cailin
@@ -39,12 +39,12 @@ The expected results would be:
 
 ```
 # deduped_and_combined.csv
-StudentId,E-mail,FirstName,id,email,first_name,department
-00000123,alice@school.edu,Alice,,,,
-00000456,bob@school.edu,Robert,,,,
-00010789,cailin@school.edu,Cailin,,,,
-,,,c1863c3e-d36a-45c6-9b35-568e17b49ab8,eric@school.edu,Eric,Chemistry
-,,,10c1e9d3-3a49-4fd4-9d83-a450c45c1cff,francisca@school.edu,Francisca,Chemistry
+id,E-mail,FirstName,email,first_name,department
+00000123,alice@school.edu,Alice,,,
+00000456,bob@school.edu,Robert,,,
+00010789,cailin@school.edu,Cailin,,,
+c1863c3e-d36a-45c6-9b35-568e17b49ab8,,,eric@school.edu,Eric,Chemistry
+10c1e9d3-3a49-4fd4-9d83-a450c45c1cff,,,francisca@school.edu,Francisca,Chemistry
 ```
 
 If you'd rather not post-process your output CSV, then you might want to pre-process your input CSVs.
