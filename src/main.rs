@@ -21,14 +21,14 @@ struct CsvReader {
 }
 
 fn get_csv_reader(
-    csv_input: &CsvInput,
+    csv_input: CsvInput,
     header_set: &mut HashSet<String>,
     header_vec: &mut Vec<String>,
 ) -> CsvReader {
     let rdr = csv::Reader::from_path(&csv_input.path);
     match rdr {
         Ok(mut reader) => match reader.headers() {
-            Ok(headers) => match &csv_input.primary_key {
+            Ok(headers) => match csv_input.primary_key {
                 None => {
                     let mut first_key = true;
                     let mut primary_key = String::new();
@@ -65,7 +65,7 @@ fn get_csv_reader(
                     }
                     if primary_key_not_seen {
                         println!(
-                            "specified primary key {}, not a header in {}",
+                            "specified primary header \"{}\" not found in {}",
                             value, csv_input.path
                         );
                         process::exit(1);
@@ -96,7 +96,7 @@ fn process_inputs(csv_inputs: Vec<CsvInput>) {
 
     for csv_input in csv_inputs {
         csv_readers.push(get_csv_reader(
-            &csv_input,
+            csv_input,
             &mut combined_headers,
             &mut ordered_combined_headers,
         ))
@@ -185,7 +185,7 @@ fn dedupe_and_combine(csv_readers: Vec<CsvReader>, write_headers: Vec<String>) {
 
 fn main() {
     let matches = App::new("DACT - De-dupe And Combine Tool")
-        .version("0.0.1")
+        .version("0.0.1a")
         .author("Pablo Barton <pablo.barton@gmail.com>")
         .about(
             "Solves a common problem. Dedupe and combine CSV files. Can set a primary header on \
