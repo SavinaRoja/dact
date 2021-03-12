@@ -8,7 +8,6 @@ extern crate csv;
 use clap::{App, Arg};
 use csv::{Reader, Writer};
 
-
 struct CsvInput {
     path: String,
     primary_key: Option<String>,
@@ -25,66 +24,59 @@ fn get_csv_reader(
     header_set: &mut HashSet<String>,
     header_vec: &mut Vec<String>,
 ) -> CsvReader {
-    let rdr = csv::Reader::from_path(&csv_input.path);
-    match rdr {
-        Ok(mut reader) => match reader.headers() {
-            Ok(headers) => match csv_input.primary_key {
-                None => {
-                    let mut first_key = true;
-                    let mut primary_key = String::new();
-                    for header in headers.iter() {
-                        let header_as_string = header.to_string();
-                        if first_key {
-                            primary_key = header_as_string.clone();
-                            first_key = false;
-                        }
-                        if !header_set.contains(&header_as_string) {
-                            header_set.insert(header_as_string.clone());
-                            header_vec.push(header_as_string);
-                        }
-                    }
-                    CsvReader {
-                        reader: reader,
-                        path: csv_input.path.clone(),
-                        primary_key: primary_key,
+    let mut reader = csv::Reader::from_path(&csv_input.path)
+        .expect(format!("error reading CSV from path {}", csv_input.path).as_str());
+
+    let headers = reader
+        .headers()
+        .expect(format!("error reading headers in from {}", csv_input.path).as_str());
+    match csv_input.primary_key {
+        None => {
+            let mut first_key = true;
+            let mut primary_key = String::new();
+            for header in headers.iter() {
+                let header_as_string = header.to_string();
+                if first_key {
+                    primary_key = header_as_string.clone();
+                    first_key = false;
+                }
+                if !header_set.contains(&header_as_string) {
+                    header_set.insert(header_as_string.clone());
+                    header_vec.push(header_as_string);
+                }
+            }
+            CsvReader {
+                reader: reader,
+                path: csv_input.path.clone(),
+                primary_key: primary_key,
+            }
+        }
+        Some(value) => {
+            let mut primary_key_not_seen = true;
+            for header in headers.iter() {
+                let header_as_string = header.to_string();
+                if primary_key_not_seen {
+                    if header_as_string == value.to_string() {
+                        primary_key_not_seen = false;
                     }
                 }
-                Some(value) => {
-                    let mut primary_key_not_seen = true;
-                    for header in headers.iter() {
-                        let header_as_string = header.to_string();
-                        if primary_key_not_seen {
-                            if header_as_string == value.to_string() {
-                                primary_key_not_seen = false;
-                            }
-                        }
-                        if !header_set.contains(&header_as_string) {
-                            header_set.insert(header_as_string.clone());
-                            header_vec.push(header_as_string);
-                        }
-                    }
-                    if primary_key_not_seen {
-                        println!(
-                            "specified primary header \"{}\" not found in {}",
-                            value, csv_input.path
-                        );
-                        process::exit(1);
-                    }
-                    CsvReader {
-                        reader: reader,
-                        path: csv_input.path.clone(),
-                        primary_key: value.to_string(),
-                    }
+                if !header_set.contains(&header_as_string) {
+                    header_set.insert(header_as_string.clone());
+                    header_vec.push(header_as_string);
                 }
-            },
-            Err(err) => {
-                println!("error reading headers in from {}: {}", csv_input.path, err);
+            }
+            if primary_key_not_seen {
+                println!(
+                    "specified primary header \"{}\" not found in {}",
+                    value, csv_input.path
+                );
                 process::exit(1);
             }
-        },
-        Err(err) => {
-            println!("error reading CSV from path {}: {}", csv_input.path, err);
-            process::exit(1);
+            CsvReader {
+                reader: reader,
+                path: csv_input.path.clone(),
+                primary_key: value.to_string(),
+            }
         }
     }
 }
@@ -111,75 +103,57 @@ fn empty_record(size: usize) -> Vec<String> {
 
 fn dedupe_and_combine(csv_readers: Vec<CsvReader>, write_headers: Vec<String>) {
     let mut key_set: HashSet<String> = HashSet::new();
-    let writer_result = Writer::from_path("deduped_and_combined.csv");
+    let mut writer = Writer::from_path("deduped_and_combined.csv").expect("Error writing to file:");
 
-    match writer_result {
-        Err(err) => {
-            println!("Error writing to file: {}", err);
-            process::exit(1);
-        }
-        Ok(mut writer) => match writer.write_record(write_headers.iter()) {
-            Err(err) => {
-                println!("error writing to CSV: {}", err);
-                process::exit(1);
+    writer
+        .write_record(write_headers.iter())
+        .expect("error writing to CSV");
+    for csv_reader in csv_readers {
+        let mut reader = csv_reader.reader;
+        let mut header_map: Vec<usize> = Vec::new();
+        let mut primary_index: usize = 0;
+        for (read_idx, header) in reader
+            .headers()
+            .expect("must have headers")
+            .iter()
+            .enumerate()
+        {
+            let string_header = header.to_string();
+            if string_header == csv_reader.primary_key {
+                primary_index = read_idx;
             }
-            Ok(_) => {
-                for csv_reader in csv_readers {
-                    let mut reader = csv_reader.reader;
-                    let mut header_map: Vec<usize> = Vec::new();
-                    let mut primary_index: usize = 0;
-                    for (read_idx, header) in reader
-                        .headers()
-                        .expect("must have headers")
-                        .iter()
-                        .enumerate()
-                    {
-                        let string_header = header.to_string();
-                        if string_header == csv_reader.primary_key {
-                            primary_index = read_idx;
-                        }
-                        for (idx, write_header) in write_headers.iter().enumerate() {
-                            if write_header.to_string() == string_header {
-                                header_map.push(idx);
-                                break;
-                            }
-                        }
-                    }
-
-                    for record in reader.records() {
-                        match record {
-                            Err(err) => {
-                                println!(
-                                    "error reading record from CSV with path {}: {}",
-                                    csv_reader.path, err
-                                );
-                                process::exit(1);
-                            }
-                            Ok(read_record) => {
-                                let mut out_record = empty_record(write_headers.len());
-                                let vec_record: Vec<&str> = read_record.iter().collect();
-                                let primary_value = vec_record[primary_index].to_string();
-                                if key_set.contains(&primary_value) {
-                                    continue;
-                                } else {
-                                    key_set.insert(primary_value);
-                                    for (idx, value) in read_record.iter().enumerate() {
-                                        out_record[header_map[idx]] = value.to_string();
-                                    }
-                                    match writer.write_record(out_record) {
-                                        Err(err) => {
-                                            println!("error writing to CSV: {}", err);
-                                            process::exit(1);
-                                        }
-                                        Ok(_) => (),
-                                    }
-                                }
-                            }
-                        }
-                    }
+            for (idx, write_header) in write_headers.iter().enumerate() {
+                if write_header.to_string() == string_header {
+                    header_map.push(idx);
+                    break;
                 }
             }
-        },
+        }
+
+        for record in reader.records() {
+            let read_record = record.expect(
+                format!(
+                    "error reading record from CSV with path {}",
+                    csv_reader.path
+                )
+                .as_str(),
+            );
+
+            let mut out_record = empty_record(write_headers.len());
+            let vec_record: Vec<&str> = read_record.iter().collect();
+            let primary_value = vec_record[primary_index].to_string();
+            if key_set.contains(&primary_value) {
+                continue;
+            } else {
+                key_set.insert(primary_value);
+                for (idx, value) in read_record.iter().enumerate() {
+                    out_record[header_map[idx]] = value.to_string();
+                }
+                writer
+                    .write_record(out_record)
+                    .expect("error writing to CSV");
+            }
+        }
     }
 }
 
